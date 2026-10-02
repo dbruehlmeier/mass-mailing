@@ -17,10 +17,17 @@ class ResPartner(models.Model):
         comodel_name="mailing.contact",
         inverse_name="partner_id",
     )
+    # NOTE (SDEN fork): these counters are display-only (partner form). Keeping
+    # them `store=True` makes every `mailing.trace` / `mailing.contact` change
+    # recompute and flush a bulk UPDATE on `res_partner`. During a mass mailing
+    # that UPDATE is flushed at commit inside a long-running queue-cron
+    # transaction; under PostgreSQL REPEATABLE READ any concurrent partner write
+    # then aborts the whole send with "could not serialize access due to
+    # concurrent update", leaving the mailing stuck in `in_queue` with no traces.
+    # Computing them on read removes the writes and the serialization failure.
     mass_mailing_contacts_count = fields.Integer(
         string="Mailing contacts number",
         compute="_compute_mass_mailing_contacts_count",
-        store=True,
         compute_sudo=True,
     )
     mass_mailing_stats_ids = fields.One2many(
@@ -31,7 +38,6 @@ class ResPartner(models.Model):
     mass_mailing_stats_count = fields.Integer(
         string="Mass mailing stats number",
         compute="_compute_mass_mailing_stats_count",
-        store=True,
     )
 
     @api.constrains("email")
